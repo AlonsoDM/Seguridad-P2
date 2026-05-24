@@ -145,7 +145,7 @@ HTB{16b0ab4fc3cd8ba880c692bc5dd4eaf3}
 
 ## Challenge 2: Execute pts[20]
 
-## 1. Pasos para explotar la vulnerabilidad
+### 1. Pasos para explotar la vulnerabilidad
 
 Primeramente se obtiene información sobre el archivo binario para identificar
 posibles vectores de ataque.
@@ -281,7 +281,7 @@ validación, se ejecuta en el stack y se obtiene una shell remota:
 
 ---
 
-## 2. Lista de herramientas utilizadas
+### 2. Lista de herramientas utilizadas
 
 | Herramienta | Propósito |
 |---|---|
@@ -290,7 +290,7 @@ validación, se ejecuta en el stack y se obtiene una shell remota:
 
 ---
 
-## 3. Debilidad que dio origen a la vulnerabilidad (CWE)
+### 3. Debilidad que dio origen a la vulnerabilidad (CWE)
 
 **CWE-94: Improper Control of Generation of Code (Code Injection)**
 
@@ -311,7 +311,7 @@ arbitrario.
 
 ---
 
-## 4. Patrón de ataque (CAPEC)
+### 4. Patrón de ataque (CAPEC)
 
 **CAPEC-242: Code Injection**
 
@@ -331,7 +331,7 @@ operativo remoto.
 
 ---
 
-## 5. Bandera
+### 5. Bandera
 
 #### La bandera obtenido corresponde a: 
 ```
@@ -362,13 +362,118 @@ HTB{d14efc5f440239a02ef164bd27b4a5eb}
 
 # Web
 
-## Challenge 1 pts[]
+## Challenge 1 NextPath pts[30]
 
-1. Procedimiento seguido (screenshots y explicaciones).
-2. Lista de herramientas utilizadas.
-3. Debilidad que dio origen a la vulnerabilidad (código CWE).
-4. Patrón de ataque que se siguió para explotar la vulnerabilidad (código CAPEC).
-5. “Bandera”
+### 1. Pasos para explotar la vulnerabilidad
+
+Primeramente se obtiene información sobre el reto y se analiza el código
+fuente disponible para identificar posibles vectores de ataque.
+
+![alt text](media/W1-1.png)
+
+El servidor expone un endpoint `/api/team?id=<número>` que recibe un
+parámetro numérico, construye un path del tipo `team/<id>.png` y devuelve
+el archivo correspondiente. Al revisar el código fuente en `team.js` se
+identifican las siguientes restricciones:
+
+- El parámetro `id` debe estar presente.
+- El valor de `id` debe ser únicamente dígitos (validado con regex `^[0-9]+$`).
+- El valor no puede contener `/` ni `.` para prevenir path traversal.
+- El path resultante se trunca a un máximo de 100 caracteres.
+
+Dado que el filtro de traversal y el regex solo evalúan el **primer**
+parámetro `id`, se identifica que es posible inyectar caracteres CRLF
+(`%0A%0D`) dentro del valor para confundir al parser de query strings de
+Next.js. Al incluir un segundo parámetro `id` con el path malicioso, el
+validador evalúa el primero (`"1"`) mientras el servidor procesa el segundo
+para construir el path:
+
+```
+/api/team?id=1%0A%0D&id=../../etc/password
+```
+
+El cambio en el mensaje de error confirma que el bypass funcionó, el
+servidor ya no detecta traversal sino que intenta abrir el archivo,
+aunque con el path incorrecto aún.
+
+![alt text](media/W1-2.png)
+
+Para conocer la ubicación exacta de `flag.txt` se inspecciona el contenedor
+Docker localmente. Se encuentra que el archivo está en `/root/flag.txt`, sin
+embargo al intentar accederlo directamente se obtiene un error de permisos
+(`EACCES: permission denied`) ya que el proceso de Node.js no tiene acceso
+a ese directorio.
+
+![alt text](media/W1-3.png)
+![alt text](media/W1-4.png)
+
+Adicionalmente existe un segundo obstáculo: el servidor agrega `.png` al
+final del path construido, por lo que cualquier intento de leer `flag.txt`
+resulta en una búsqueda de `flag.txt.png`.
+
+Ambos problemas se resuelven aprovechando el sistema de archivos virtual
+`/proc` de Linux. La ruta `/proc/1/task/1/root/` expone el filesystem raíz
+del proceso a través de sus symlinks, permitiendo acceder al archivo con
+permisos distintos. Al encadenar esta ruta consigo misma varias veces, el
+`.png` que agrega el servidor queda absorbido dentro de los segmentos del
+path sin romper la resolución del archivo.
+
+El payload final debe además mantenerse dentro del límite de 100 caracteres
+una vez construido el path completo con `team/` al inicio. El comando
+utilizado es el siguiente:
+
+```bash
+curl -v "http://<IP>:<PORT>/api/team?id=1%0A%0D&id=../../../../../../../../../../../../../../../../../proc/1/task/1/root/proc/1/root/proc/1/task/1/root/flag.txt"
+```
+
+Al ejecutarlo se obtiene la bandera:
+
+![alt text](media/W1-5.png)
+
+---
+
+### 2. Lista de herramientas utilizadas
+
+| Herramienta | Propósito |
+|---|---|
+| `curl` | Envío de requests HTTP con el payload de CRLF injection |
+| Navegador web | Exploración inicial del endpoint y prueba de restricciones |
+| Docker | Inspección local del contenedor para ubicar `flag.txt` |
+| Código fuente | Análisis del código `team.js` para entender las restricciones |
+
+---
+
+### 3. Debilidad que dio origen a la vulnerabilidad (CWE)
+
+**CWE-22: Improper Limitation of a Pathname to a Restricted Directory
+(Path Traversal)**
+
+La vulnerabilidad principal radica en que el servidor construye un path de
+archivo concatenando directamente el input del usuario sin una sanitización
+suficiente. Aunque existe un filtro que bloquea `/` y `.`, este solo evalúa
+el primer parámetro `id` y puede ser eludido inyectando un segundo parámetro
+mediante CRLF injection.
+
+---
+
+### 4. Patrón de ataque (CAPEC)
+
+**CAPEC-126: Path Traversal**
+
+El ataque aprovecha la construcción insegura de paths de archivo para
+acceder a recursos fuera del directorio autorizado. Mediante el uso de
+secuencias `../` en el segundo parámetro `id`, el atacante navega el árbol
+de directorios del servidor hasta alcanzar `/root/flag.txt`, un archivo que
+el flujo normal de la aplicación nunca expone.
+
+---
+
+### 5. Bandera
+
+#### La bandera obtenido corresponde a: 
+```
+HTB{tr4v3r51ng_p45t_411_th3_ch3ck5...t4sk_w3ll_d0ne!}
+```
 
 ## Challenge 2 pts[]
 
