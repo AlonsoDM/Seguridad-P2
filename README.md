@@ -350,7 +350,7 @@ HTB{d14efc5f440239a02ef164bd27b4a5eb}
 4. Patrón de ataque que se siguió para explotar la vulnerabilidad (código CAPEC).
 5. “Bandera”
 
-## Challenge 2 pts[]
+## Challenge 2: Virtually Mad pts[]
 
 1. Procedimiento seguido (screenshots y explicaciones).
 2. Lista de herramientas utilizadas.
