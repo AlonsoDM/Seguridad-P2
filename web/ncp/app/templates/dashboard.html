@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Dashboard · NotebookConverter Pro{% endblock %}
+{% block content %}
+<section class="dashboard-shell">
+    <section class="workspace-hero panel">
+        <div>
+            <p class="eyebrow">workspace</p>
+            <h1 class="compact-title">Notebook delivery workspace</h1>
+            <p class="lede">Upload a source notebook, run a conversion, and keep the output in your job history.</p>
+        </div>
+        <div class="format-chips" aria-label="available formats">
+            <span class="chip">.ipynb</span>
+            <span class="chip">html</span>
+            <span class="chip">markdown</span>
+        </div>
+    </section>
+
+    <section class="panel upload-panel">
+        <div class="panel-head">
+            <div>
+                <p class="eyebrow">new job</p>
+                <h2>Start conversion</h2>
+            </div>
+        </div>
+        <form method="post" action="{{ url_for('dashboard.convert') }}" enctype="multipart/form-data" class="stack-form">
+            <label>
+                Notebook file
+                <input type="file" name="notebook" accept=".ipynb" required>
+            </label>
+            <label>
+                Output format
+                <select name="format" required>
+                    <option value="html">HTML</option>
+                    <option value="markdown">Markdown</option>
+                </select>
+            </label>
+            <button type="submit" class="button primary">Start Conversion</button>
+        </form>
+    </section>
+</section>
+
+<section class="panel history-panel">
+    <div class="section-head tight">
+        <div>
+            <p class="eyebrow">job history</p>
+            <h2>Recent conversions</h2>
+        </div>
+    </div>
+    {% if jobs %}
+        <div class="job-table">
+            <div class="job-row job-head">
+                <span>job</span>
+                <span>source</span>
+                <span>format</span>
+                <span>status</span>
+                <span>created</span>
+            </div>
+            {% for job in jobs %}
+                <a class="job-row" href="{{ url_for('dashboard.job_detail', job_id=job.id) }}">
+                    <span class="mono">{{ job.id }}</span>
+                    <span>{{ job.original_filename }}</span>
+                    <span>{{ job.output_format }}</span>
+                    <span>{{ job.status }}</span>
+                    <span>{{ job.created_at }}</span>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p class="empty-state">No conversions yet.</p>
+    {% endif %}
+</section>
+{% endblock %}

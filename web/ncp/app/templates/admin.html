@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Admin Panel · NotebookConverter Pro{% endblock %}
+{% block content %}
+<section class="grid two">
+    <article class="panel">
+        <p class="eyebrow">workspace settings</p>
+        <h1>Output configuration</h1>
+        <form method="post" class="stack-form">
+            <label class="toggle-row">
+                <span>
+                    <strong>Save exported asset files</strong>
+                    <small>Keep generated Markdown support files available for downstream publishing workflows.</small>
+                </span>
+                <input type="checkbox" name="asset_storage_enabled" {% if asset_storage_enabled %}checked{% endif %}>
+            </label>
+            <button type="submit" class="button primary">Save Settings</button>
+        </form>
+    </article>
+
+    <article class="panel">
+        <p class="eyebrow">users</p>
+        <h2>Manage users</h2>
+        <div class="user-admin-table">
+            <div class="user-admin-row user-admin-head">
+                <span>user</span>
+                <span>role</span>
+                <span>jobs</span>
+                <span>actions</span>
+            </div>
+            {% for user in users %}
+                <div class="user-admin-row">
+                    <span>{{ user.username }}</span>
+                    <span>{{ user.role }}</span>
+                    <span>{{ user.job_count }}</span>
+                    <span class="user-actions">
+                        <button type="button" class="ghost-action" disabled>Edit</button>
+                        <button type="button" class="ghost-action" disabled>Disable</button>
+                    </span>
+                </div>
+            {% endfor %}
+        </div>
+    </article>
+</section>
+{% endblock %}

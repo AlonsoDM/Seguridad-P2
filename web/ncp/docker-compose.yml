@@ -1,0 +1,7 @@
+services:
+  notebookconverter:
+    build: .
+    container_name: notebookconverter-pro
+    ports:
+      - "8000:8000"
+    restart: unless-stopped

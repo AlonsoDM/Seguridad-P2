@@ -1,2 +1,0 @@
-selenium==4.22.0
-tornado==6.4.1

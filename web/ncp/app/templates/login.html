@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Sign In · NotebookConverter Pro{% endblock %}
+{% block content %}
+<section class="login-layout">
+    <div class="landing-shell">
+        <section class="landing-hero panel">
+            <div class="hero-copy">
+                <p class="eyebrow">hosted notebook publishing</p>
+                <h1 class="compact-title landing-title">From research notebook to clean deliverable.</h1>
+                <p class="lede">
+                    NotebookConverter Pro turns `.ipynb` files into shareable HTML and Markdown outputs,
+                    with a workspace built around repeat conversions and archived results.
+                </p>
+                <div class="hero-meta">
+                    <span>HTML exports</span>
+                    <span>Markdown delivery</span>
+                    <span>Saved job history</span>
+                </div>
+            </div>
+
+            <div class="product-stage">
+                <div class="stage-browser">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <div class="stage-grid">
+                    <article class="stage-card stage-card-wide">
+                        <p class="stage-label">conversion queue</p>
+                        <strong>Notebook ready for export</strong>
+                        <small>research-report.ipynb → html</small>
+                        <div class="stage-progress">
+                            <span></span>
+                        </div>
+                    </article>
+                    <article class="stage-card">
+                        <p class="stage-label">formats</p>
+                        <strong>HTML</strong>
+                        <small>single-file delivery</small>
+                    </article>
+                    <article class="stage-card">
+                        <p class="stage-label">formats</p>
+                        <strong>Markdown</strong>
+                        <small>portable text output</small>
+                    </article>
+                    <article class="stage-card stage-card-tall">
+                        <p class="stage-label">recent jobs</p>
+                        <ul class="stage-list">
+                            <li><span>team-notes.ipynb</span><strong>done</strong></li>
+                            <li><span>analysis-v4.ipynb</span><strong>done</strong></li>
+                            <li><span>appendix.ipynb</span><strong>queued</strong></li>
+                        </ul>
+                    </article>
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div class="auth-stack">
+        <form class="panel auth-panel" method="post" id="sign-in">
+            <p class="eyebrow">sign in</p>
+            <h2>Access workspace</h2>
+            <label>
+                Username
+                <input type="text" name="username" autocomplete="username" required>
+            </label>
+            <label>
+                Password
+                <input type="password" name="password" autocomplete="current-password" required>
+            </label>
+            <button type="submit" class="button primary">Sign In</button>
+        </form>
+
+        <form class="panel auth-panel" method="post" action="{{ url_for('public.register') }}" id="register">
+            <p class="eyebrow">register</p>
+            <h2>Create account</h2>
+            <label>
+                Username
+                <input type="text" name="username" autocomplete="username" required>
+            </label>
+            <label>
+                Password
+                <input type="password" name="password" autocomplete="new-password" required>
+            </label>
+            <label>
+                Confirm password
+                <input type="password" name="confirm_password" autocomplete="new-password" required>
+            </label>
+            <button type="submit" class="button">Create Account</button>
+        </form>
+    </div>
+</section>
+{% endblock %}
