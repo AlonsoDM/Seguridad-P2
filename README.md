@@ -475,15 +475,6 @@ el flujo normal de la aplicación nunca expone.
 HTB{tr4v3r51ng_p45t_411_th3_ch3ck5...t4sk_w3ll_d0ne!}
 ```
 
-## Challenge 2 pts[]
-
-1. Procedimiento seguido (screenshots y explicaciones).
-2. Lista de herramientas utilizadas.
-3. Debilidad que dio origen a la vulnerabilidad (código CWE).
-4. Patrón de ataque que se siguió para explotar la vulnerabilidad (código CAPEC).
-5. “Bandera”
-
----
 
 # Tabla resumen de retos resueltos
 
