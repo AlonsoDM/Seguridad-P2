@@ -57,8 +57,6 @@ segment_patterns = [
 # Longitudes de cada segmento segun los rangos de slices en Ghidra.
 segment_lengths = [3, 3, 3, 4, 2, 3, 4]
 
-print("Buscando segmentos validos...\n")
-
 # Para cada segmento, se prueban todas las combinaciones posibles
 # el producto ASCII y el patron regex.
 for target, pattern, length in zip(segment_targets, segment_patterns, segment_lengths):
@@ -66,5 +64,3 @@ for target, pattern, length in zip(segment_targets, segment_patterns, segment_le
         word = "".join(combo)
         if ascii_product(word, target) and matches_pattern(word, pattern):
             print(f"  {word}")
-
-    print(" --- ")

