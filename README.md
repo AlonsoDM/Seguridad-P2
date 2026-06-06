@@ -43,12 +43,15 @@ ejecutada, como se ve a continuación:
 
 ![alt text](media/P1-3.png)
 
+Algo relevante a comar en cuenta son los parámetros que son necesarios para la correcta ejecución
+la función.
+
 Ya sabiendo que se puede hacer un buffer overflow para influenciar en el flujo
 de ejecución y ejecutar la función `flag()`, se procede a calcular el tamaño
 del payload necesario para sobrescribir el return address.
 
 El buffer declarado en `vuln()` tiene un tamaño de 180 bytes. Sumando 4 bytes
-de alineación y 4 bytes del EBP guardado, se necesitan **188 bytes de padding**
+de alineación (múltiplos de 4 en arquitectura x86) y 4 bytes del EBP guardado, se necesitan **188 bytes de padding**
 antes de poder sobrescribir el return address.
 
 ![alt text](media/P1-4.png)
@@ -101,6 +104,7 @@ bandera:
 | `Ghidra` | Análisis estático y decompilación del binario |
 | `GDB + pwndbg` | Depuración dinámica y análisis del stack |
 | `pwntools` | Construcción y envío del payload |
+| `radare2` | Dirección de flag ( ) |
 
 ---
 
