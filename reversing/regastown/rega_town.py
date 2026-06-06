@@ -24,18 +24,14 @@ def ascii_product(word, target):
         product *= ord(char)
     return product == target
 
-# Verifica que el segmento completo cumpla el patron regex
-# extraido de filter_input (usando fullmatch para ser estricto).
 def matches_pattern(word, pattern):
     return re.fullmatch(pattern, word)
 
 # Caracteres candidatos: letras + digitos (alfanumericos).
-# El regex del challenge solo permite estos en los segmentos.
 candidates = string.ascii_letters + string.digits
 
 # Targets extraidos del assembly de check_input en Ghidra.
 # Cada valor es el producto ASCII esperado del segmento correspondiente.
-# Estan en el mismo orden que los slices del input: [4..7], [8..11], etc.
 segment_targets = [
     0x7a070,    # segmento 1
     0x5c436,    # segmento 2
@@ -64,13 +60,11 @@ segment_lengths = [3, 3, 3, 4, 2, 3, 4]
 print("Buscando segmentos validos...\n")
 
 # Para cada segmento, se prueban todas las combinaciones posibles
-# de caracteres alfanumericos con la longitud correcta.
-# Solo se imprime la combinacion si pasa AMBAS verificaciones:
 # el producto ASCII y el patron regex.
 for target, pattern, length in zip(segment_targets, segment_patterns, segment_lengths):
     for combo in itertools.product(candidates, repeat=length):
         word = "".join(combo)
         if ascii_product(word, target) and matches_pattern(word, pattern):
             print(f"  {word}")
-    # El separador indica el fin de un segmento (equivale al '_' en el flag)
+
     print(" --- ")

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job.id }} · NotebookConverter Pro{% endblock %}
+{% block content %}
+<section class="panel">
+    <p class="eyebrow">job detail</p>
+    <h1 class="mono">{{ job.id }}</h1>
+    <dl class="kv-list compact">
+        <div><dt>source</dt><dd>{{ job.original_filename }}</dd></div>
+        <div><dt>format</dt><dd>{{ job.output_format }}</dd></div>
+        <div><dt>status</dt><dd>{{ job.status }}</dd></div>
+        <div><dt>created</dt><dd>{{ job.created_at }}</dd></div>
+    </dl>
+    {% if job.status == "completed" and job.output_path %}
+        <p class="helper">Your converted file is ready to download.</p>
+        <a class="button primary" href="{{ url_for('dashboard.download_job', job_id=job.id) }}">Download Output</a>
+    {% else %}
+        <p class="helper">The conversion could not be completed. Please review your notebook and try again.</p>
+        <a class="button" href="{{ url_for('dashboard.dashboard') }}">Back to Dashboard</a>
+    {% endif %}
+</section>
+{% endblock %}

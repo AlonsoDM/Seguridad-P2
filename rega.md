@@ -143,7 +143,7 @@ Buscando segmentos validos...
 
 ![alt text](images/rega8.png)
 
-**30 puntos**
+
 
 
 
