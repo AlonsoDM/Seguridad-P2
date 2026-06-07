@@ -12,7 +12,7 @@
 
 - [Web](#web)
   - [Challenge 1: Next Path](#challenge-1-nextpath-pts30)
-  - [Challenge 2: Notebook Converter Pro](#challenge-2-notebook-converter-pro-pts-20)
+  - [Challenge 2: Notebook Converter Pro](#challenge-2-notebook-converter-pro-pts20)
 
 - [Tabla resumen de retos resueltos](#tabla-resumen-de-retos-resueltos)
 
