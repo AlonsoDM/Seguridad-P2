@@ -9,7 +9,7 @@
 - [Reversing](#reversing)
   - [Challenge 1: Rega's Town](#challenge-1-regas-town-pts30)
   - [Challenge 2: Virtually Mad](#challenge-2-virtually-mad-pts30)
-  - [Challenge 3: Simple Encryptor pts[10]](#challenge-3-simple-encryptor-pts10)
+  - [Challenge 3: Simple Encryptor](#challenge-3-simple-encryptor-pts10)
 
 - [Web](#web)
   - [Challenge 1: Next Path](#challenge-1-nextpath-pts30)
