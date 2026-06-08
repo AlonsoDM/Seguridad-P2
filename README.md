@@ -9,6 +9,7 @@
 - [Reversing](#reversing)
   - [Challenge 1: Rega's Town](#challenge-1-regas-town-pts30)
   - [Challenge 2: Virtually Mad](#challenge-2-virtually-mad-pts30)
+  - [Challenge 3: Simple Encryptor pts[10]](#challenge-3-simple-encryptor-pts10)
 
 - [Web](#web)
   - [Challenge 1: Next Path](#challenge-1-nextpath-pts30)
@@ -1390,11 +1391,11 @@ FLAG: HTB{y3t_4n0th3r_pyth0n_c0nv3rt3r_cve}
 
 | Fecha | Reto | Resuelto por | Puntos acumulados |
 |---|---|---|---|
-| DD/MM/AAAA | You know 0xDiablos | Pablo | 20 |
-| DD/MM/AAAA | Rega's Town | Alonso | 50 |
-| DD/MM/AAAA | Execute | Pablo | 70 |
-| DD/MM/AAAA | Virtually Mad | Alonso | 100 |
-| DD/MM/AAAA | Simple Encryptor | Pablo | 110 |
-| DD/MM/AAAA | NextPath | Pablo | 140 |
-| DD/MM/AAAA | Notebook Converter Pro | Alonso | 160 |
+| 15/05/2026 | You know 0xDiablos | Pablo | 20 |
+| 21/05/2026 | Rega's Town | Alonso | 50 |
+| 20/05/2026 | Execute | Pablo | 70 |
+| 24/05/2026 | Virtually Mad | Alonso | 100 |
+| 08/06/2026 | Simple Encryptor | Pablo | 110 |
+| 24/05/2026 | NextPath | Pablo | 140 |
+| 31/05/2026 | Notebook Converter Pro | Alonso | 160 |
 
